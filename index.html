@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>The Birthday Collection</title>
+  
+  <!-- External Dependencies -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <style>
+    body {
+      font-family: 'Quicksand', sans-serif;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #66545e;
+    }
+    canvas { touch-action: none; }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-15px); }
+    }
+    .animate-float { animation: float 4s ease-in-out infinite; }
+    @keyframes spin-slow {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .animate-spin-slow { animation: spin-slow 12s linear infinite; }
+    .perspective-1000 { perspective: 1000px; }
+    .backface-hidden { backface-visibility: hidden; }
+    .rotate-y-180 { transform: rotateY(180deg); }
+    .scrollbar-hide::-webkit-scrollbar { display: none; }
+    .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    
+    /* Mobile-friendly touches */
+    button { -webkit-tap-highlight-color: transparent; }
+  </style>
+
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "@google/genai": "https://esm.sh/@google/genai",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/"
+  }
+}
+</script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="typescript,react">
+    import React, { useState, useEffect, useRef, useMemo } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { GoogleGenAI } from "@google/genai";
+
+    // --- CONSTANTS & TYPES ---
+    const GameType = {
+      LOBBY: 'LOBBY',
+      RUSH: 'RUSH',
+      BALLOON: 'BALLOON',
+      MEMORY: 'MEMORY',
+      AI_WISH: 'AI_WISH'
+    };
+
+    const COLORS = ["#aa6f73", "#eea990", "#f6e0b5", "#a39193", "#66545e"];
+    const ICONS = ["🦢", "🌸", "🍰", "🎀", "🕯️", "☁️", "🐚", "🩰"];
+    const AVATARS = ["🎀", "🩰", "🦢", "🌸", "🧸", "🐚", "🍰"];
+    const GOODS = ["🎂", "🧁", "🍓", "🍬", "🥨", "🍮"];
+    const BADS = ["🥦", "💣", "📄", "⏰"];
+
+    // --- SERVICE: AI ---
+    const generateBirthdayWish = async (name, vibes) => {
+      try {
+        // Correct initialization per guidelines: direct use of process.env.API_KEY
+        const ai = new GoogleGenAI({ apiKey: window.process?.env?.API_KEY || '' });
+        const response = await ai.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: `Generate a short, poetic, and highly aesthetic birthday wish for ${name}. Their favorite vibes are: ${vibes}. Keep it under 60 words. Use emojis like ✨, 🌸, 🕯️, ☁️.`,
+        });
+        // Accessing .text as a property, not a method
+        return response.text || "Wishing you a day as magical as the stars. Happy Birthday! ✨";
+      } catch (e) {
+        console.error("AI Generation failed", e);
+        return "Wishing you a day as magical as the stars. Happy Birthday! ✨";
+      }
+    };
+
+    // --- COMPONENT: BIRTHDAY RUSH ---
+    const BirthdayRush = ({ onExit }) => {
+      const canvasRef = useRef(null);
+      const [gameState, setGameState] = useState('START');
+      const [selectedAvatar, setSelectedAvatar] = useState(AVATARS[0]);
+      const [score, setScore] = useState(0);
+      const [lives, setLives] = useState(3);
+      const stateRef = useRef({
+        score: 0, lives: 3, items: [], playerX: 0, lastHit: 0, keys: {}
+      });
+
+      useEffect(() => {
+        const handleKeys = (e, val) => stateRef.current.keys[e.code] = val;
+        window.addEventListener('keydown', (e) => handleKeys(e, true));
+        window.addEventListener('keyup', (e) => handleKeys(e, false));
+        return () => {
+          window.removeEventListener('keydown', (e) => handleKeys(e, true));
+          window.removeEventListener('keyup', (e) => handleKeys(e, false));
+        };
+      }, []);
+
+      useEffect(() => {
+        if (gameState !== 'PLAYING') return;
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        stateRef.current.playerX = canvas.width / 2;
+
+        let frameId;
+        const update = () => {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          const state = stateRef.current;
+          if (state.keys['ArrowLeft']) state.playerX -= 10;
+          if (state.keys['ArrowRight']) state.playerX += 10;
+          state.playerX = Math.max(40, Math.min(canvas.width - 40, state.playerX));
+
+          const invinc = Date.now() - state.lastHit < 1000;
+          if (!invinc || Math.floor(Date.now() / 100) % 2 === 0) {
+            ctx.font = '60px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(selectedAvatar, state.playerX, canvas.height - 100);
+          }
+
+          if (Math.random() < 0.04) {
+            const isGood = Math.random() > 0.3;
+            state.items.push({
+              x: Math.random() * (canvas.width - 60) + 30,
+              y: -50,
+              speed: 4 + (state.score / 200),
+              emoji: isGood ? GOODS[Math.floor(Math.random() * GOODS.length)] : BADS[Math.floor(Math.random() * BADS.length)],
+              type: isGood ? 'good' : 'bad'
+            });
+          }
+
+          for (let i = state.items.length - 1; i >= 0; i--) {
+            const item = state.items[i];
+            item.y += item.speed;
+            ctx.font = '45px Arial';
+            ctx.fillText(item.emoji, item.x, item.y);
+
+            const dx = Math.abs(state.playerX - item.x);
+            const dy = Math.abs((canvas.height - 100) - item.y);
+            if (dx < 50 && dy < 50) {
+              if (item.type === 'good') {
+                state.score += 10; setScore(state.score);
+              } else if (!invinc) {
+                state.lives--; setLives(state.lives); state.lastHit = Date.now();
+                if (state.lives <= 0) setGameState('OVER');
+              }
+              state.items.splice(i, 1);
+            } else if (item.y > canvas.height + 50) state.items.splice(i, 1);
+          }
+          frameId = requestAnimationFrame(update);
+        };
+        update();
+        return () => cancelAnimationFrame(frameId);
+      }, [gameState, selectedAvatar]);
+
+      return (
+        <div className="w-full h-full bg-[#a39193] relative">
+          <button onClick={onExit} className="absolute top-6 left-6 z-50 px-6 py-2 bg-[#aa6f73] text-[#f6e0b5] rounded-full font-bold shadow-lg">← LOBBY</button>
+          {gameState === 'PLAYING' ? (
+            <>
+              <canvas ref={canvasRef} className="w-full h-full" />
+              <div className="absolute top-6 right-6 text-right">
+                <div className="text-4xl font-bold text-[#f6e0b5]">Score: {score}</div>
+                <div className="text-2xl mt-2">{"❤️".repeat(lives)}</div>
+              </div>
+            </>
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-md p-6 text-center">
+              <h1 className="text-5xl font-bold text-[#f6e0b5] mb-8">{gameState === 'OVER' ? 'Game Over!' : 'Birthday Rush'}</h1>
+              {gameState === 'START' ? (
+                <div className="flex flex-wrap justify-center gap-4 mb-10">
+                  {AVATARS.map(av => (
+                    <button key={av} onClick={() => setSelectedAvatar(av)} className={`text-4xl p-3 rounded-full border-4 transition-all ${selectedAvatar === av ? 'border-[#eea990] bg-white/20' : 'border-transparent'}`}>{av}</button>
+                  ))}
+                </div>
+              ) : <p className="text-[#eea990] text-2xl mb-10">Final Score: {score}</p>}
+              <button onClick={() => { stateRef.current = { score: 0, lives: 3, items: [], playerX: window.innerWidth/2, lastHit: 0, keys: {} }; setScore(0); setLives(3); setGameState('PLAYING'); }} className="px-12 py-4 bg-[#aa6f73] text-[#f6e0b5] rounded-full text-2xl font-bold shadow-xl">
+                {gameState === 'OVER' ? 'TRY AGAIN' : "LET'S PARTY!"}
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // --- COMPONENT: BALLOON POP ---
+    const BalloonPop = ({ onExit }) => {
+      const canvasRef = useRef(null);
+      const [score, setScore] = useState(0);
+      const [escaped, setEscaped] = useState(0);
+      const [gameState, setGameState] = useState('START');
+      const engineRef = useRef({ balloons: [], score: 0, escaped: 0 });
+
+      useEffect(() => {
+        if (gameState !== 'PLAYING') return;
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const spawn = () => {
+          engineRef.current.balloons.push({
+            x: Math.random() * (canvas.width - 100) + 50,
+            y: canvas.height + 60,
+            r: 45,
+            speed: 1.5 + (engineRef.current.score / 50),
+            color: COLORS[Math.floor(Math.random() * COLORS.length)],
+            wobble: Math.random() * Math.PI * 2
+          });
+        };
+
+        const handleClick = (e) => {
+          const x = (e.clientX || (e.touches && e.touches[0].clientX));
+          const y = (e.clientY || (e.touches && e.touches[0].clientY));
+          for (let i = engineRef.current.balloons.length - 1; i >= 0; i--) {
+            const b = engineRef.current.balloons[i];
+            const dist = Math.sqrt((x - b.x) ** 2 + (y - b.y) ** 2);
+            if (dist < b.r + 10) {
+              engineRef.current.balloons.splice(i, 1);
+              engineRef.current.score++;
+              setScore(engineRef.current.score);
+              return;
+            }
+          }
+        };
+
+        canvas.addEventListener('mousedown', handleClick);
+        canvas.addEventListener('touchstart', handleClick);
+        let frameId;
+        const draw = () => {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          if (Math.random() < 0.03) spawn();
+          engineRef.current.balloons.forEach((b, i) => {
+            b.y -= b.speed;
+            b.wobble += 0.05;
+            b.x += Math.sin(b.wobble);
+            ctx.fillStyle = b.color;
+            ctx.beginPath(); ctx.ellipse(b.x, b.y, b.r * 0.8, b.r, 0, 0, Math.PI * 2); ctx.fill();
+            if (b.y < -100) {
+              engineRef.current.balloons.splice(i, 1); engineRef.current.escaped++;
+              setEscaped(engineRef.current.escaped);
+              if (engineRef.current.escaped >= 5) setGameState('OVER');
+            }
+          });
+          frameId = requestAnimationFrame(draw);
+        };
+        draw();
+        return () => { cancelAnimationFrame(frameId); canvas.removeEventListener('mousedown', handleClick); canvas.removeEventListener('touchstart', handleClick); };
+      }, [gameState]);
+
+      return (
+        <div className="w-full h-full bg-[#66545e] relative">
+          <button onClick={onExit} className="absolute top-6 left-6 z-50 px-6 py-2 bg-[#aa6f73] text-[#f6e0b5] rounded-full font-bold shadow-lg">← LOBBY</button>
+          {gameState === 'PLAYING' ? (
+            <>
+              <canvas ref={canvasRef} className="w-full h-full cursor-crosshair" />
+              <div className="absolute top-6 right-6 text-[#f6e0b5] text-right">
+                <div className="text-4xl font-bold">Pops: {score}</div>
+                <div className="text-xl">Missed: {escaped}/5</div>
+              </div>
+            </>
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 backdrop-blur-md p-10 text-center">
+              <h1 className="text-5xl font-bold text-[#f6e0b5] mb-6">{gameState === 'START' ? 'Balloon Pop' : 'Game Over!'}</h1>
+              <p className="text-[#eea990] mb-8 text-xl">Relax and pop the floating balloons.</p>
+              <button onClick={() => { engineRef.current = { balloons: [], score: 0, escaped: 0 }; setScore(0); setEscaped(0); setGameState('PLAYING'); }} className="px-12 py-4 bg-[#aa6f73] text-[#f6e0b5] rounded-full text-2xl font-bold shadow-xl">START POPPING</button>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // --- COMPONENT: MEMORY LANE ---
+    const MemoryLane = ({ onExit }) => {
+      const [cards, setCards] = useState([]);
+      const [flipped, setFlipped] = useState([]);
+      const [moves, setMoves] = useState(0);
+      const [won, setWon] = useState(false);
+
+      const init = () => {
+        const deck = [...ICONS, ...ICONS].sort(() => Math.random() - 0.5).map(icon => ({ icon, matched: false, show: false }));
+        setCards(deck); setFlipped([]); setMoves(0); setWon(false);
+      };
+
+      useEffect(() => { init(); }, []);
+
+      const flip = (i) => {
+        if (flipped.length === 2 || cards[i].show || cards[i].matched) return;
+        const newCards = [...cards]; newCards[i].show = true; setCards(newCards);
+        const newFlipped = [...flipped, i]; setFlipped(newFlipped);
+        if (newFlipped.length === 2) {
+          setMoves(m => m + 1);
+          const [a, b] = newFlipped;
+          if (cards[a].icon === cards[b].icon) {
+            setTimeout(() => {
+              newCards[a].matched = true; newCards[b].matched = true;
+              setCards([...newCards]); setFlipped([]);
+              if (newCards.every(c => c.matched)) setWon(true);
+            }, 500);
+          } else {
+            setTimeout(() => {
+              newCards[a].show = false; newCards[b].show = false;
+              setCards([...newCards]); setFlipped([]);
+            }, 1000);
+          }
+        }
+      };
+
+      return (
+        <div className="w-full h-full bg-[#a39193] flex flex-col items-center pt-24 px-4 overflow-y-auto">
+          <button onClick={onExit} className="fixed top-6 left-6 z-50 px-6 py-2 bg-[#aa6f73] text-[#f6e0b5] rounded-full font-bold shadow-lg">← LOBBY</button>
+          <div className="text-center mb-10">
+            <h1 className="text-4xl font-bold text-[#f6e0b5]">MEMORY LANE</h1>
+            <p className="text-[#eea990] text-xl mt-2">{moves} Moves</p>
+          </div>
+          <div className="grid grid-cols-4 gap-4 max-w-sm w-full">
+            {cards.map((c, i) => (
+              <div key={i} onClick={() => flip(i)} className="aspect-square relative cursor-pointer group">
+                <div className={`absolute inset-0 transition-transform duration-500 rounded-xl flex items-center justify-center text-3xl shadow-lg border-2 border-white/10 ${c.show || c.matched ? 'bg-[#f6e0b5] scale-100' : 'bg-[#aa6f73] rotate-y-180 scale-95'}`}>
+                  {(c.show || c.matched) ? c.icon : '✨'}
+                </div>
+              </div>
+            ))}
+          </div>
+          {won && (
+            <div className="fixed inset-0 z-50 bg-black/70 flex flex-col items-center justify-center p-6 text-center">
+              <h1 className="text-6xl font-bold text-[#f6e0b5] mb-6">Lovely!</h1>
+              <p className="text-[#eea990] text-2xl mb-10">You matched all memories in {moves} moves.</p>
+              <button onClick={init} className="px-10 py-4 bg-[#aa6f73] text-[#f6e0b5] rounded-full text-xl font-bold">PLAY AGAIN</button>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // --- COMPONENT: AI WISH GENERATOR ---
+    const AIWishGenerator = ({ onExit }) => {
+      const [name, setName] = useState('');
+      const [vibes, setVibes] = useState('');
+      const [wish, setWish] = useState(null);
+      const [loading, setLoading] = useState(false);
+
+      const handle = async (e) => {
+        e.preventDefault(); setLoading(true);
+        const result = await generateBirthdayWish(name, vibes);
+        setWish(result); setLoading(false);
+      };
+
+      return (
+        <div className="w-full h-full bg-[#66545e] flex items-center justify-center p-6">
+          <button onClick={onExit} className="fixed top-6 left-6 z-50 px-6 py-2 bg-[#aa6f73] text-[#f6e0b5] rounded-full font-bold shadow-lg">← LOBBY</button>
+          <div className="w-full max-w-lg bg-black/20 p-10 rounded-[3rem] border-4 border-white/5 text-center shadow-2xl">
+            {!wish ? (
+              <>
+                <h1 className="text-4xl font-bold text-[#f6e0b5] mb-4">GEMINI WISH ✨</h1>
+                <p className="text-[#eea990] mb-8">AI-crafted poetic blessings.</p>
+                <form onSubmit={handle} className="space-y-4">
+                  <input type="text" placeholder="Your Name" value={name} onChange={e => setName(e.target.value)} className="w-full px-6 py-4 bg-black/40 border border-white/10 rounded-full text-[#f6e0b5] outline-none" required />
+                  <input type="text" placeholder="Favorite Vibes (e.g. cozy)" value={vibes} onChange={e => setVibes(e.target.value)} className="w-full px-6 py-4 bg-black/40 border border-white/10 rounded-full text-[#f6e0b5] outline-none" />
+                  <button type="submit" disabled={loading} className="w-full py-4 bg-[#aa6f73] text-[#f6e0b5] rounded-full text-xl font-bold shadow-xl">
+                    {loading ? 'Consulting the stars...' : 'GENERATE BLESSING'}
+                  </button>
+                </form>
+              </>
+            ) : (
+              <div className="animate-float">
+                <p className="text-[#f6e0b5] text-2xl leading-relaxed italic mb-10">"{wish}"</p>
+                <button onClick={() => setWish(null)} className="px-8 py-3 bg-[#aa6f73] text-[#f6e0b5] rounded-full font-bold">ANOTHER ONE?</button>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    // --- COMPONENT: LOBBY ---
+    const Lobby = ({ onSelect, onToggleMusic, isPlaying }) => (
+      <div className="w-full h-full flex flex-col items-center pt-16 px-6 overflow-y-auto pb-32 scrollbar-hide">
+        <section className="text-center mb-12 animate-float">
+          <h1 className="text-5xl md:text-8xl font-bold text-[#f6e0b5] tracking-tighter leading-tight drop-shadow-2xl">THE BIRTHDAY<br/>COLLECTION</h1>
+          <p className="text-[#eea990] text-xl mt-6 italic opacity-80 font-light">"A sanctuary of digital delights, curated for you."</p>
+        </section>
+
+        <div className="mb-16 flex flex-col items-center">
+          <div onClick={onToggleMusic} className={`w-40 h-40 bg-zinc-900 rounded-full border-8 border-[#eea990] shadow-2xl flex items-center justify-center cursor-pointer transition-all duration-700 ${isPlaying ? 'animate-spin-slow scale-110' : 'opacity-80'}`}>
+            <div className="w-16 h-16 bg-[#aa6f73] rounded-full border-8 border-zinc-800 flex items-center justify-center text-[10px] text-[#f6e0b5] font-black text-center">BDAY<br/>HITS</div>
+          </div>
+          <button onClick={onToggleMusic} className="mt-8 px-6 py-2 bg-[#aa6f73] text-[#f6e0b5] rounded-full text-[10px] font-bold tracking-widest uppercase shadow-xl">
+            {isPlaying ? 'Pause Vibes ⏸' : 'Play Vibes ▶'}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full max-w-6xl">
+          {[
+            { id: GameType.RUSH, icon: '🍓', title: 'Birthday Rush', desc: 'Catch treats!' },
+            { id: GameType.BALLOON, icon: '☁️', title: 'Balloon Pop', desc: 'Serene pops.' },
+            { id: GameType.MEMORY, icon: '🕯️', title: 'Memory Lane', desc: 'Matching pairs.' },
+            { id: GameType.AI_WISH, icon: '✨', title: 'Gemini Blessing', desc: 'AI Poetry.' }
+          ].map(g => (
+            <button key={g.id} onClick={() => onSelect(g.id)} className="p-10 bg-[#aa6f73]/20 backdrop-blur-xl border border-white/20 rounded-[3rem] hover:bg-[#aa6f73]/40 hover:-translate-y-2 transition-all flex flex-col items-center group shadow-xl">
+              <span className="text-7xl mb-6 group-hover:scale-110 transition-transform">{g.icon}</span>
+              <h2 className="text-2xl font-bold text-[#f6e0b5]">{g.title}</h2>
+              <p className="text-[#eea990] text-sm mt-3 font-medium opacity-80">{g.desc}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+
+    // --- MAIN APP COMPONENT ---
+    const App = () => {
+      const [game, setGame] = useState(GameType.LOBBY);
+      const [entered, setEntered] = useState(false);
+      const [isPlaying, setIsPlaying] = useState(false);
+      const audioRef = useRef(null);
+
+      const enter = () => {
+        setEntered(true);
+        if (audioRef.current) {
+          audioRef.current.play().then(() => setIsPlaying(true)).catch(() => setEntered(true));
+        }
+      };
+
+      const toggle = () => {
+        if (audioRef.current.paused) { audioRef.current.play(); setIsPlaying(true); }
+        else { audioRef.current.pause(); setIsPlaying(false); }
+      };
+
+      return (
+        <div className="relative w-screen h-screen bg-[#66545e] overflow-hidden flex flex-col">
+          <audio ref={audioRef} src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-17.mp3" loop />
+          
+          {!entered ? (
+            <div className="fixed inset-0 z-[1000] flex flex-col items-center justify-center bg-[#66545e] text-center px-6">
+              <span className="text-9xl mb-10 animate-float">🎁</span>
+              <h1 className="text-5xl md:text-7xl font-bold text-[#f6e0b5] mb-6 tracking-tighter">Birthday Invitation</h1>
+              <p className="text-[#eea990] text-xl mb-12 max-w-lg italic font-light opacity-80 leading-relaxed">"Step into a digital corner curated just for you. Please enter to begin."</p>
+              <button onClick={enter} className="px-16 py-5 bg-[#aa6f73] text-[#f6e0b5] rounded-full text-2xl font-bold shadow-2xl border-2 border-white/10 transition-all hover:scale-105 active:scale-95">ENTER WEBSITE ✨</button>
+            </div>
+          ) : (
+            <>
+              <main className="flex-1 relative">
+                {game === GameType.LOBBY && <Lobby onSelect={setGame} onToggleMusic={toggle} isPlaying={isPlaying} />}
+                {game === GameType.RUSH && <BirthdayRush onExit={() => setGame(GameType.LOBBY)} />}
+                {game === GameType.BALLOON && <BalloonPop onExit={() => setGame(GameType.LOBBY)} />}
+                {game === GameType.MEMORY && <MemoryLane onExit={() => setGame(GameType.LOBBY)} />}
+                {game === GameType.AI_WISH && <AIWishGenerator onExit={() => setGame(GameType.LOBBY)} />}
+              </main>
+              
+              <footer className="h-14 bg-black/30 backdrop-blur-md border-t border-white/10 flex items-center justify-between px-6 z-50">
+                <div className="flex items-center gap-3">
+                  <div className={`flex gap-1 items-end h-5 ${isPlaying ? 'opacity-100' : 'opacity-20'}`}>
+                    {[1, 2, 3, 4].map(i => <div key={i} className={`w-1 bg-[#eea990] rounded-full ${isPlaying ? 'animate-pulse' : ''}`} style={{ height: `${Math.random() * 80 + 20}%` }}></div>)}
+                  </div>
+                  <span className="text-[#f6e0b5] text-[10px] font-black uppercase tracking-widest opacity-60">{isPlaying ? 'Vibes Active' : 'Vibes Paused'}</span>
+                </div>
+                <button onClick={toggle} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-[#f6e0b5] transition-colors hover:bg-white/20">{isPlaying ? '⏸' : '▶'}</button>
+              </footer>
+            </>
+          )}
+        </div>
+      );
+    };
+
+    const root = createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
