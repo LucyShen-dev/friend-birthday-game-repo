@@ -35,8 +35,18 @@
     .scrollbar-hide::-webkit-scrollbar { display: none; }
     .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
     
-    /* Mobile-friendly touches */
     button { -webkit-tap-highlight-color: transparent; }
+
+    #root:empty::before {
+      content: 'Loading your celebration...';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #f6e0b5;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+    }
   </style>
 
   <script type="importmap">
@@ -46,7 +56,6 @@
     "react-dom": "https://esm.sh/react-dom@18.2.0",
     "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
     "@google/genai": "https://esm.sh/@google/genai",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "react/": "https://esm.sh/react@^19.2.3/"
   }
 }
@@ -55,12 +64,13 @@
 <body>
   <div id="root"></div>
 
-  <script type="text/babel" data-presets="typescript,react">
+  <!-- Using data-type="module" to enable ESM imports within transpiled code -->
+  <script type="text/babel" data-type="module" data-presets="typescript,react">
     import React, { useState, useEffect, useRef, useMemo } from 'react';
     import { createRoot } from 'react-dom/client';
     import { GoogleGenAI } from "@google/genai";
 
-    // --- CONSTANTS & TYPES ---
+    // --- TYPES & CONSTANTS ---
     const GameType = {
       LOBBY: 'LOBBY',
       RUSH: 'RUSH',
@@ -75,42 +85,38 @@
     const GOODS = ["🎂", "🧁", "🍓", "🍬", "🥨", "🍮"];
     const BADS = ["🥦", "💣", "📄", "⏰"];
 
-    // --- SERVICE: AI ---
+    // --- GENAI SERVICE ---
     const generateBirthdayWish = async (name, vibes) => {
       try {
-        // Correct initialization per guidelines: direct use of process.env.API_KEY
-        const ai = new GoogleGenAI({ apiKey: window.process?.env?.API_KEY || '' });
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
+          model: 'gemini-3-flash-preview',
           contents: `Generate a short, poetic, and highly aesthetic birthday wish for ${name}. Their favorite vibes are: ${vibes}. Keep it under 60 words. Use emojis like ✨, 🌸, 🕯️, ☁️.`,
         });
-        // Accessing .text as a property, not a method
         return response.text || "Wishing you a day as magical as the stars. Happy Birthday! ✨";
       } catch (e) {
-        console.error("AI Generation failed", e);
-        return "Wishing you a day as magical as the stars. Happy Birthday! ✨";
+        console.error("Gemini Error:", e);
+        return "Wishing you a day filled with light and wonder. Happy Birthday! 🌸";
       }
     };
 
-    // --- COMPONENT: BIRTHDAY RUSH ---
+    // --- COMPONENTS ---
+
     const BirthdayRush = ({ onExit }) => {
       const canvasRef = useRef(null);
       const [gameState, setGameState] = useState('START');
       const [selectedAvatar, setSelectedAvatar] = useState(AVATARS[0]);
       const [score, setScore] = useState(0);
       const [lives, setLives] = useState(3);
-      const stateRef = useRef({
-        score: 0, lives: 3, items: [], playerX: 0, lastHit: 0, keys: {}
-      });
+      const stateRef = useRef({ score: 0, lives: 3, items: [], playerX: 0, lastHit: 0, keys: {} });
 
       useEffect(() => {
         const handleKeys = (e, val) => stateRef.current.keys[e.code] = val;
-        window.addEventListener('keydown', (e) => handleKeys(e, true));
-        window.addEventListener('keyup', (e) => handleKeys(e, false));
-        return () => {
-          window.removeEventListener('keydown', (e) => handleKeys(e, true));
-          window.removeEventListener('keyup', (e) => handleKeys(e, false));
-        };
+        const kd = (e) => handleKeys(e, true);
+        const ku = (e) => handleKeys(e, false);
+        window.addEventListener('keydown', kd);
+        window.addEventListener('keyup', ku);
+        return () => { window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku); };
       }, []);
 
       useEffect(() => {
@@ -152,7 +158,6 @@
             item.y += item.speed;
             ctx.font = '45px Arial';
             ctx.fillText(item.emoji, item.x, item.y);
-
             const dx = Math.abs(state.playerX - item.x);
             const dy = Math.abs((canvas.height - 100) - item.y);
             if (dx < 50 && dy < 50) {
@@ -177,7 +182,7 @@
           {gameState === 'PLAYING' ? (
             <>
               <canvas ref={canvasRef} className="w-full h-full" />
-              <div className="absolute top-6 right-6 text-right">
+              <div className="absolute top-6 right-6 text-right pointer-events-none">
                 <div className="text-4xl font-bold text-[#f6e0b5]">Score: {score}</div>
                 <div className="text-2xl mt-2">{"❤️".repeat(lives)}</div>
               </div>
@@ -185,13 +190,13 @@
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-md p-6 text-center">
               <h1 className="text-5xl font-bold text-[#f6e0b5] mb-8">{gameState === 'OVER' ? 'Game Over!' : 'Birthday Rush'}</h1>
-              {gameState === 'START' ? (
+              {gameState === 'START' && (
                 <div className="flex flex-wrap justify-center gap-4 mb-10">
                   {AVATARS.map(av => (
-                    <button key={av} onClick={() => setSelectedAvatar(av)} className={`text-4xl p-3 rounded-full border-4 transition-all ${selectedAvatar === av ? 'border-[#eea990] bg-white/20' : 'border-transparent'}`}>{av}</button>
+                    <button key={av} onClick={() => setSelectedAvatar(av)} className={`text-4xl p-3 rounded-full border-4 transition-all ${selectedAvatar === av ? 'border-[#eea990] bg-white/20 scale-110' : 'border-transparent opacity-60'}`}>{av}</button>
                   ))}
                 </div>
-              ) : <p className="text-[#eea990] text-2xl mb-10">Final Score: {score}</p>}
+              )}
               <button onClick={() => { stateRef.current = { score: 0, lives: 3, items: [], playerX: window.innerWidth/2, lastHit: 0, keys: {} }; setScore(0); setLives(3); setGameState('PLAYING'); }} className="px-12 py-4 bg-[#aa6f73] text-[#f6e0b5] rounded-full text-2xl font-bold shadow-xl">
                 {gameState === 'OVER' ? 'TRY AGAIN' : "LET'S PARTY!"}
               </button>
@@ -201,7 +206,6 @@
       );
     };
 
-    // --- COMPONENT: BALLOON POP ---
     const BalloonPop = ({ onExit }) => {
       const canvasRef = useRef(null);
       const [score, setScore] = useState(0);
@@ -235,8 +239,7 @@
             const dist = Math.sqrt((x - b.x) ** 2 + (y - b.y) ** 2);
             if (dist < b.r + 10) {
               engineRef.current.balloons.splice(i, 1);
-              engineRef.current.score++;
-              setScore(engineRef.current.score);
+              engineRef.current.score++; setScore(engineRef.current.score);
               return;
             }
           }
@@ -249,14 +252,11 @@
           ctx.clearRect(0, 0, canvas.width, canvas.height);
           if (Math.random() < 0.03) spawn();
           engineRef.current.balloons.forEach((b, i) => {
-            b.y -= b.speed;
-            b.wobble += 0.05;
-            b.x += Math.sin(b.wobble);
+            b.y -= b.speed; b.wobble += 0.05; b.x += Math.sin(b.wobble);
             ctx.fillStyle = b.color;
             ctx.beginPath(); ctx.ellipse(b.x, b.y, b.r * 0.8, b.r, 0, 0, Math.PI * 2); ctx.fill();
             if (b.y < -100) {
-              engineRef.current.balloons.splice(i, 1); engineRef.current.escaped++;
-              setEscaped(engineRef.current.escaped);
+              engineRef.current.balloons.splice(i, 1); engineRef.current.escaped++; setEscaped(engineRef.current.escaped);
               if (engineRef.current.escaped >= 5) setGameState('OVER');
             }
           });
@@ -268,11 +268,11 @@
 
       return (
         <div className="w-full h-full bg-[#66545e] relative">
-          <button onClick={onExit} className="absolute top-6 left-6 z-50 px-6 py-2 bg-[#aa6f73] text-[#f6e0b5] rounded-full font-bold shadow-lg">← LOBBY</button>
+          <button onClick={onExit} className="absolute top-6 left-6 z-50 px-6 py-2 bg-[#aa6f73] text-[#f6e0b5] rounded-full font-bold">← LOBBY</button>
           {gameState === 'PLAYING' ? (
             <>
               <canvas ref={canvasRef} className="w-full h-full cursor-crosshair" />
-              <div className="absolute top-6 right-6 text-[#f6e0b5] text-right">
+              <div className="absolute top-6 right-6 text-[#f6e0b5] text-right pointer-events-none">
                 <div className="text-4xl font-bold">Pops: {score}</div>
                 <div className="text-xl">Missed: {escaped}/5</div>
               </div>
@@ -280,7 +280,7 @@
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 backdrop-blur-md p-10 text-center">
               <h1 className="text-5xl font-bold text-[#f6e0b5] mb-6">{gameState === 'START' ? 'Balloon Pop' : 'Game Over!'}</h1>
-              <p className="text-[#eea990] mb-8 text-xl">Relax and pop the floating balloons.</p>
+              <p className="text-[#eea990] mb-8 text-xl font-medium">Relax and pop the floating balloons.</p>
               <button onClick={() => { engineRef.current = { balloons: [], score: 0, escaped: 0 }; setScore(0); setEscaped(0); setGameState('PLAYING'); }} className="px-12 py-4 bg-[#aa6f73] text-[#f6e0b5] rounded-full text-2xl font-bold shadow-xl">START POPPING</button>
             </div>
           )}
@@ -288,7 +288,6 @@
       );
     };
 
-    // --- COMPONENT: MEMORY LANE ---
     const MemoryLane = ({ onExit }) => {
       const [cards, setCards] = useState([]);
       const [flipped, setFlipped] = useState([]);
@@ -329,9 +328,9 @@
           <button onClick={onExit} className="fixed top-6 left-6 z-50 px-6 py-2 bg-[#aa6f73] text-[#f6e0b5] rounded-full font-bold shadow-lg">← LOBBY</button>
           <div className="text-center mb-10">
             <h1 className="text-4xl font-bold text-[#f6e0b5]">MEMORY LANE</h1>
-            <p className="text-[#eea990] text-xl mt-2">{moves} Moves</p>
+            <p className="text-[#eea990] text-xl mt-2 font-medium">{moves} Moves</p>
           </div>
-          <div className="grid grid-cols-4 gap-4 max-w-sm w-full">
+          <div className="grid grid-cols-4 gap-4 max-w-sm w-full mb-20">
             {cards.map((c, i) => (
               <div key={i} onClick={() => flip(i)} className="aspect-square relative cursor-pointer group">
                 <div className={`absolute inset-0 transition-transform duration-500 rounded-xl flex items-center justify-center text-3xl shadow-lg border-2 border-white/10 ${c.show || c.matched ? 'bg-[#f6e0b5] scale-100' : 'bg-[#aa6f73] rotate-y-180 scale-95'}`}>
@@ -343,7 +342,7 @@
           {won && (
             <div className="fixed inset-0 z-50 bg-black/70 flex flex-col items-center justify-center p-6 text-center">
               <h1 className="text-6xl font-bold text-[#f6e0b5] mb-6">Lovely!</h1>
-              <p className="text-[#eea990] text-2xl mb-10">You matched all memories in {moves} moves.</p>
+              <p className="text-[#eea990] text-2xl mb-10 font-medium">You matched all memories in {moves} moves.</p>
               <button onClick={init} className="px-10 py-4 bg-[#aa6f73] text-[#f6e0b5] rounded-full text-xl font-bold">PLAY AGAIN</button>
             </div>
           )}
@@ -351,7 +350,6 @@
       );
     };
 
-    // --- COMPONENT: AI WISH GENERATOR ---
     const AIWishGenerator = ({ onExit }) => {
       const [name, setName] = useState('');
       const [vibes, setVibes] = useState('');
@@ -371,11 +369,11 @@
             {!wish ? (
               <>
                 <h1 className="text-4xl font-bold text-[#f6e0b5] mb-4">GEMINI WISH ✨</h1>
-                <p className="text-[#eea990] mb-8">AI-crafted poetic blessings.</p>
+                <p className="text-[#eea990] mb-8 font-medium italic opacity-80">AI-crafted poetic blessings for your soul.</p>
                 <form onSubmit={handle} className="space-y-4">
                   <input type="text" placeholder="Your Name" value={name} onChange={e => setName(e.target.value)} className="w-full px-6 py-4 bg-black/40 border border-white/10 rounded-full text-[#f6e0b5] outline-none" required />
-                  <input type="text" placeholder="Favorite Vibes (e.g. cozy)" value={vibes} onChange={e => setVibes(e.target.value)} className="w-full px-6 py-4 bg-black/40 border border-white/10 rounded-full text-[#f6e0b5] outline-none" />
-                  <button type="submit" disabled={loading} className="w-full py-4 bg-[#aa6f73] text-[#f6e0b5] rounded-full text-xl font-bold shadow-xl">
+                  <input type="text" placeholder="Favorite Vibes (e.g. cottagecore, cozy)" value={vibes} onChange={e => setVibes(e.target.value)} className="w-full px-6 py-4 bg-black/40 border border-white/10 rounded-full text-[#f6e0b5] outline-none" />
+                  <button type="submit" disabled={loading} className="w-full py-4 bg-[#aa6f73] text-[#f6e0b5] rounded-full text-xl font-bold shadow-xl active:scale-95 transition-transform">
                     {loading ? 'Consulting the stars...' : 'GENERATE BLESSING'}
                   </button>
                 </form>
@@ -383,7 +381,7 @@
             ) : (
               <div className="animate-float">
                 <p className="text-[#f6e0b5] text-2xl leading-relaxed italic mb-10">"{wish}"</p>
-                <button onClick={() => setWish(null)} className="px-8 py-3 bg-[#aa6f73] text-[#f6e0b5] rounded-full font-bold">ANOTHER ONE?</button>
+                <button onClick={() => setWish(null)} className="px-8 py-3 bg-[#aa6f73] text-[#f6e0b5] rounded-full font-bold shadow-lg">ANOTHER ONE?</button>
               </div>
             )}
           </div>
@@ -391,19 +389,18 @@
       );
     };
 
-    // --- COMPONENT: LOBBY ---
     const Lobby = ({ onSelect, onToggleMusic, isPlaying }) => (
       <div className="w-full h-full flex flex-col items-center pt-16 px-6 overflow-y-auto pb-32 scrollbar-hide">
         <section className="text-center mb-12 animate-float">
           <h1 className="text-5xl md:text-8xl font-bold text-[#f6e0b5] tracking-tighter leading-tight drop-shadow-2xl">THE BIRTHDAY<br/>COLLECTION</h1>
-          <p className="text-[#eea990] text-xl mt-6 italic opacity-80 font-light">"A sanctuary of digital delights, curated for you."</p>
+          <p className="text-[#eea990] text-xl mt-6 italic opacity-80 font-light max-w-lg mx-auto leading-relaxed">"A sanctuary of digital delights, curated for you."</p>
         </section>
 
         <div className="mb-16 flex flex-col items-center">
-          <div onClick={onToggleMusic} className={`w-40 h-40 bg-zinc-900 rounded-full border-8 border-[#eea990] shadow-2xl flex items-center justify-center cursor-pointer transition-all duration-700 ${isPlaying ? 'animate-spin-slow scale-110' : 'opacity-80'}`}>
-            <div className="w-16 h-16 bg-[#aa6f73] rounded-full border-8 border-zinc-800 flex items-center justify-center text-[10px] text-[#f6e0b5] font-black text-center">BDAY<br/>HITS</div>
+          <div onClick={onToggleMusic} className={`w-40 h-40 bg-zinc-900 rounded-full border-8 border-[#eea990] shadow-2xl flex items-center justify-center cursor-pointer transition-all duration-700 ${isPlaying ? 'animate-spin-slow scale-110 shadow-[0_0_60px_rgba(238,169,144,0.3)]' : 'opacity-80'}`}>
+            <div className="w-16 h-16 bg-[#aa6f73] rounded-full border-8 border-zinc-800 flex items-center justify-center text-[10px] text-[#f6e0b5] font-black text-center leading-tight">BDAY<br/>HITS</div>
           </div>
-          <button onClick={onToggleMusic} className="mt-8 px-6 py-2 bg-[#aa6f73] text-[#f6e0b5] rounded-full text-[10px] font-bold tracking-widest uppercase shadow-xl">
+          <button onClick={onToggleMusic} className="mt-8 px-6 py-2 bg-[#aa6f73] text-[#f6e0b5] rounded-full text-[10px] font-bold tracking-[0.2em] uppercase shadow-xl hover:bg-[#8b5a5e]">
             {isPlaying ? 'Pause Vibes ⏸' : 'Play Vibes ▶'}
           </button>
         </div>
@@ -415,9 +412,9 @@
             { id: GameType.MEMORY, icon: '🕯️', title: 'Memory Lane', desc: 'Matching pairs.' },
             { id: GameType.AI_WISH, icon: '✨', title: 'Gemini Blessing', desc: 'AI Poetry.' }
           ].map(g => (
-            <button key={g.id} onClick={() => onSelect(g.id)} className="p-10 bg-[#aa6f73]/20 backdrop-blur-xl border border-white/20 rounded-[3rem] hover:bg-[#aa6f73]/40 hover:-translate-y-2 transition-all flex flex-col items-center group shadow-xl">
+            <button key={g.id} onClick={() => onSelect(g.id)} className="p-10 bg-[#aa6f73]/20 backdrop-blur-xl border border-white/10 rounded-[3rem] hover:bg-[#aa6f73]/40 hover:-translate-y-2 transition-all flex flex-col items-center group shadow-xl active:scale-95">
               <span className="text-7xl mb-6 group-hover:scale-110 transition-transform">{g.icon}</span>
-              <h2 className="text-2xl font-bold text-[#f6e0b5]">{g.title}</h2>
+              <h2 className="text-2xl font-bold text-[#f6e0b5] tracking-tight">{g.title}</h2>
               <p className="text-[#eea990] text-sm mt-3 font-medium opacity-80">{g.desc}</p>
             </button>
           ))}
@@ -425,7 +422,7 @@
       </div>
     );
 
-    // --- MAIN APP COMPONENT ---
+    // --- MAIN APP ---
     const App = () => {
       const [game, setGame] = useState(GameType.LOBBY);
       const [entered, setEntered] = useState(false);
@@ -435,11 +432,14 @@
       const enter = () => {
         setEntered(true);
         if (audioRef.current) {
-          audioRef.current.play().then(() => setIsPlaying(true)).catch(() => setEntered(true));
+          audioRef.current.play()
+            .then(() => setIsPlaying(true))
+            .catch(() => setEntered(true)); // Proceed even if audio fails
         }
       };
 
       const toggle = () => {
+        if (!audioRef.current) return;
         if (audioRef.current.paused) { audioRef.current.play(); setIsPlaying(true); }
         else { audioRef.current.pause(); setIsPlaying(false); }
       };
@@ -450,7 +450,7 @@
           
           {!entered ? (
             <div className="fixed inset-0 z-[1000] flex flex-col items-center justify-center bg-[#66545e] text-center px-6">
-              <span className="text-9xl mb-10 animate-float">🎁</span>
+              <span className="text-9xl mb-10 animate-float drop-shadow-2xl">🎁</span>
               <h1 className="text-5xl md:text-7xl font-bold text-[#f6e0b5] mb-6 tracking-tighter">Birthday Invitation</h1>
               <p className="text-[#eea990] text-xl mb-12 max-w-lg italic font-light opacity-80 leading-relaxed">"Step into a digital corner curated just for you. Please enter to begin."</p>
               <button onClick={enter} className="px-16 py-5 bg-[#aa6f73] text-[#f6e0b5] rounded-full text-2xl font-bold shadow-2xl border-2 border-white/10 transition-all hover:scale-105 active:scale-95">ENTER WEBSITE ✨</button>
@@ -465,22 +465,29 @@
                 {game === GameType.AI_WISH && <AIWishGenerator onExit={() => setGame(GameType.LOBBY)} />}
               </main>
               
-              <footer className="h-14 bg-black/30 backdrop-blur-md border-t border-white/10 flex items-center justify-between px-6 z-50">
+              <footer className="h-14 bg-black/40 backdrop-blur-lg border-t border-white/10 flex items-center justify-between px-6 z-50">
                 <div className="flex items-center gap-3">
                   <div className={`flex gap-1 items-end h-5 ${isPlaying ? 'opacity-100' : 'opacity-20'}`}>
-                    {[1, 2, 3, 4].map(i => <div key={i} className={`w-1 bg-[#eea990] rounded-full ${isPlaying ? 'animate-pulse' : ''}`} style={{ height: `${Math.random() * 80 + 20}%` }}></div>)}
+                    {[1, 2, 3, 4, 5].map(i => <div key={i} className={`w-1 bg-[#eea990] rounded-full ${isPlaying ? 'animate-pulse' : ''}`} style={{ height: `${Math.random() * 80 + 20}%`, animationDelay: `${i*0.1}s` }}></div>)}
                   </div>
-                  <span className="text-[#f6e0b5] text-[10px] font-black uppercase tracking-widest opacity-60">{isPlaying ? 'Vibes Active' : 'Vibes Paused'}</span>
+                  <span className="text-[#f6e0b5] text-[10px] font-black uppercase tracking-[0.2em] opacity-60">{isPlaying ? 'Vibes Active' : 'Vibes Paused'}</span>
                 </div>
-                <button onClick={toggle} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-[#f6e0b5] transition-colors hover:bg-white/20">{isPlaying ? '⏸' : '▶'}</button>
+                <button onClick={toggle} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-[#f6e0b5] transition-colors hover:bg-white/20 active:scale-90">{isPlaying ? '⏸' : '▶'}</button>
               </footer>
             </>
           )}
+
+          {/* Background Ambience */}
+          <div className="pointer-events-none absolute inset-0 opacity-[0.05] z-0 overflow-hidden">
+            <span className="absolute top-[10%] left-[5%] text-9xl animate-float">🌸</span>
+            <span className="absolute bottom-[20%] right-[5%] text-9xl animate-float" style={{animationDelay: '2s'}}>☁️</span>
+          </div>
         </div>
       );
     };
 
-    const root = createRoot(document.getElementById('root'));
+    const container = document.getElementById('root');
+    const root = createRoot(container);
     root.render(<App />);
   </script>
 </body>
