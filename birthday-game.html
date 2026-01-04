@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Birthday Rush!</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #2c3e50;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden; /* Prevent scrolling */
+            touch-action: none; /* Prevent browser zooming/swiping */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px; /* Max width for desktop */
+            height: 100%;
+            max-height: 800px;
+            background: linear-gradient(to bottom, #2b32b2, #1488cc);
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* UI Overlays */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            color: #FFD700;
+            text-shadow: 2px 2px #ff00de;
+        }
+
+        p {
+            font-size: 1.2rem;
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
+
+        button {
+            background: #ff00de;
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(255, 0, 222, 0.4);
+            transition: transform 0.1s;
+            font-weight: bold;
+            margin-top: 20px;
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px black;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        /* "Oh No" Feedback style */
+        #feedback {
+            position: absolute;
+            top: 40%;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            font-size: 5rem;
+            font-weight: 900;
+            color: #ff3333;
+            text-shadow: 3px 3px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;
+            pointer-events: none;
+            z-index: 8;
+            transition: opacity 0.2s;
+            opacity: 1;
+        }
+        
+        .fade-out {
+            opacity: 0 !important;
+        }
+
+        /* Avatar Selection Styles */
+        #avatar-selection {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .avatar-option {
+            font-size: 2.5rem;
+            cursor: pointer;
+            border: 3px solid transparent;
+            border-radius: 50%;
+            padding: 5px;
+            transition: transform 0.2s, background 0.2s;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .avatar-option:hover {
+            transform: scale(1.1);
+        }
+
+        .avatar-option.selected {
+            border-color: #FFD700;
+            background: rgba(255, 215, 0, 0.2);
+            transform: scale(1.2);
+        }
+
+        /* Mobile controls hint */
+        #mobile-controls {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            text-align: center;
+            opacity: 0.5;
+            pointer-events: none;
+            font-size: 0.9rem;
+        }
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="hud">
+        <div id="score-board">Score: 0</div>
+        <div id="lives-board">❤️❤️❤️</div>
+    </div>
+    
+    <!-- Oh No Feedback -->
+    <div id="feedback" class="hidden">OH NO!</div>
+    
+    <!-- Start Screen -->
+    <div id="start-screen" class="overlay">
+        <h1>BIRTHDAY RUSH</h1>
+        <p>Collect 🎂 🎁 🍕<br>Avoid 🥦 💣 📄</p>
+        
+        <p style="margin-bottom: 10px; font-size: 1rem; color: #aaa;">CHOOSE YOUR CHARACTER:</p>
+        <div id="avatar-selection">
+            <!-- Avatars injected by JS -->
+        </div>
+
+        <button onclick="startGame()">START GAME</button>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="game-over-screen" class="overlay hidden">
+        <h1 style="color: #ff4444;">OH NO!</h1>
+        <p>Out of lives!</p>
+        <p>Final Score: <span id="final-score">0</span></p>
+        <button onclick="resetGame()">TRY AGAIN</button>
+    </div>
+
+    <!-- Win Screen -->
+    <div id="win-screen" class="overlay hidden">
+        <h1>HAPPY BIRTHDAY!</h1>
+        <p>YOU ARE A LEGEND! 🥳</p>
+        <p>Enjoy your special day!</p>
+        <button onclick="resetGame()">PLAY AGAIN</button>
+    </div>
+
+    <div id="mobile-controls">Tap left/right or use Arrow Keys</div>
+</div>
+
+<script>
+    // --- CONFIGURATION ---
+    const TARGET_SCORE = 1000;
+    const PLAYER_SPEED = 7;
+    const SPAWN_RATE = 40; // Lower is faster spawning
+    const MAX_LIVES = 3;
+    const INVULNERABILITY_TIME = 1000; // 1 second safety after hit
+    
+    // Assets (Emojis)
+    const AVATAR_OPTIONS = ["😎", "🤠", "🥳", "🤖", "🦄", "🐱", "👸", "👽"];
+    let selectedAvatar = AVATAR_OPTIONS[0];
+
+    const GOOD_ITEMS = ["🎂", "🎁", "🍕", "🎈", "🧁"];
+    const BAD_ITEMS = ["🥦", "💣", "⏰", "📄"]; 
+
+    // Setup Canvas
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const container = document.getElementById('game-container');
+
+    // UI Elements
+    const startScreen = document.getElementById('start-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+    const winScreen = document.getElementById('win-screen');
+    const scoreDisplay = document.getElementById('score-board');
+    const livesDisplay = document.getElementById('lives-board');
+    const finalScoreDisplay = document.getElementById('final-score');
+    const avatarContainer = document.getElementById('avatar-selection');
+    const feedbackEl = document.getElementById('feedback');
+
+    // Game State
+    let gameLoopId;
+    let score = 0;
+    let lives = MAX_LIVES;
+    let frameCount = 0;
+    let isGameOver = false;
+    let confettiParticles = [];
+    let lastHitTime = 0;
+
+    // --- INITIALIZE AVATAR SELECTOR ---
+    function initAvatarSelector() {
+        avatarContainer.innerHTML = '';
+        AVATAR_OPTIONS.forEach(avatar => {
+            const el = document.createElement('div');
+            el.className = 'avatar-option';
+            el.innerText = avatar;
+            if (avatar === selectedAvatar) el.classList.add('selected');
+            
+            el.onclick = () => {
+                document.querySelectorAll('.avatar-option').forEach(d => d.classList.remove('selected'));
+                el.classList.add('selected');
+                selectedAvatar = avatar;
+            };
+            avatarContainer.appendChild(el);
+        });
+    }
+    initAvatarSelector();
+
+    // Resize handling
+    let width, height;
+    function resize() {
+        width = canvas.width = container.clientWidth;
+        height = canvas.height = container.clientHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Input Handling
+    const keys = { ArrowLeft: false, ArrowRight: false };
+    let touchX = null;
+
+    window.addEventListener('keydown', (e) => {
+        if(keys.hasOwnProperty(e.code)) keys[e.code] = true;
+    });
+    window.addEventListener('keyup', (e) => {
+        if(keys.hasOwnProperty(e.code)) keys[e.code] = false;
+    });
+
+    // Touch Controls
+    canvas.addEventListener('touchstart', (e) => {
+        touchX = e.touches[0].clientX;
+    }, {passive: false});
+    
+    canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault(); // Prevent scrolling
+        touchX = e.touches[0].clientX; 
+    }, {passive: false});
+
+    canvas.addEventListener('touchend', () => {
+        touchX = null;
+    });
+
+
+    // --- GAME OBJECTS ---
+
+    const player = {
+        x: width / 2,
+        y: height - 80,
+        size: 50,
+        draw() {
+            // Flash effect when invulnerable
+            if (Date.now() - lastHitTime < INVULNERABILITY_TIME) {
+                // Blink every 100ms
+                if (Math.floor(Date.now() / 100) % 2 === 0) return;
+            }
+
+            ctx.font = `${this.size}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.fillText(selectedAvatar, this.x, this.y);
+        },
+        update() {
+            // Keyboard
+            if (keys.ArrowLeft && this.x > this.size/2) this.x -= PLAYER_SPEED;
+            if (keys.ArrowRight && this.x < width - this.size/2) this.x += PLAYER_SPEED;
+
+            // Touch (Simple follow)
+            if (touchX !== null) {
+                const rect = canvas.getBoundingClientRect();
+                const relativeX = touchX - rect.left;
+                // Smooth move towards touch
+                const dx = relativeX - this.x;
+                this.x += dx * 0.2; 
+            }
+        }
+    };
+
+    let items = [];
+
+    class Item {
+        constructor() {
+            this.size = 40;
+            this.x = Math.random() * (width - this.size) + this.size/2;
+            this.y = -this.size;
+            this.speed = Math.random() * 3 + 2 + (score / 500); // Get faster as score increases
+            
+            // Determine type
+            const isBad = Math.random() < 0.3; // 30% chance of bad item
+            if (isBad) {
+                this.type = 'bad';
+                this.emoji = BAD_ITEMS[Math.floor(Math.random() * BAD_ITEMS.length)];
+                this.value = 0;
+            } else {
+                this.type = 'good';
+                this.emoji = GOOD_ITEMS[Math.floor(Math.random() * GOOD_ITEMS.length)];
+                this.value = 100;
+            }
+        }
+
+        update() {
+            this.y += this.speed;
+        }
+
+        draw() {
+            ctx.font = `${this.size}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(this.emoji, this.x, this.y);
+        }
+    }
+
+    // Confetti for Win Screen
+    function createConfetti() {
+        for(let i=0; i<100; i++) {
+            confettiParticles.push({
+                x: Math.random() * width,
+                y: Math.random() * height - height,
+                color: `hsl(${Math.random() * 360}, 100%, 50%)`,
+                speedY: Math.random() * 3 + 2,
+                speedX: Math.random() * 2 - 1,
+                size: Math.random() * 10 + 5
+            });
+        }
+    }
+
+    function drawConfetti() {
+        confettiParticles.forEach((p, index) => {
+            p.y += p.speedY;
+            p.x += p.speedX;
+            ctx.fillStyle = p.color;
+            ctx.fillRect(p.x, p.y, p.size, p.size);
+
+            if(p.y > height) confettiParticles[index].y = -10;
+        });
+    }
+
+    function updateLivesDisplay() {
+        let hearts = "";
+        for(let i=0; i<lives; i++) hearts += "❤️";
+        if (lives === 0) hearts = "💔";
+        livesDisplay.innerText = hearts;
+    }
+
+    function showDamageFeedback() {
+        feedbackEl.classList.remove('hidden');
+        feedbackEl.classList.remove('fade-out');
+        
+        // Force reflow to restart animation if needed
+        void feedbackEl.offsetWidth; 
+        
+        setTimeout(() => {
+            feedbackEl.classList.add('fade-out');
+        }, 500);
+
+        setTimeout(() => {
+            feedbackEl.classList.add('hidden');
+        }, 800);
+    }
+
+    // --- GAME LOOP ---
+
+    function startGame() {
+        startScreen.classList.add('hidden');
+        gameOverScreen.classList.add('hidden');
+        winScreen.classList.add('hidden');
+        
+        score = 0;
+        lives = MAX_LIVES;
+        items = [];
+        isGameOver = false;
+        confettiParticles = [];
+        lastHitTime = 0; // Reset invulnerability
+        
+        scoreDisplay.innerText = `Score: ${score}`;
+        updateLivesDisplay();
+        
+        // Reset player pos
+        player.x = width / 2;
+        player.y = height - 60; // Adjust for mobile safe area
+
+        gameLoop();
+    }
+
+    function resetGame() {
+        startScreen.classList.remove('hidden');
+        gameOverScreen.classList.add('hidden');
+        winScreen.classList.add('hidden');
+    }
+
+    function gameOver() {
+        isGameOver = true;
+        cancelAnimationFrame(gameLoopId);
+        finalScoreDisplay.innerText = score;
+        
+        // Short delay so they see the broken heart and "Oh No"
+        setTimeout(() => {
+            gameOverScreen.classList.remove('hidden');
+        }, 800);
+    }
+
+    function gameWin() {
+        isGameOver = true;
+        createConfetti();
+        // Don't cancel animation frame so we can animate confetti
+        winScreen.classList.remove('hidden');
+    }
+
+    function gameLoop() {
+        // Clear
+        ctx.clearRect(0, 0, width, height);
+
+        if (isGameOver && confettiParticles.length > 0) {
+            drawConfetti();
+            gameLoopId = requestAnimationFrame(gameLoop);
+            return;
+        }
+
+        // Spawn Items
+        frameCount++;
+        if (frameCount % SPAWN_RATE === 0) {
+            items.push(new Item());
+        }
+
+        // Update & Draw Player
+        player.update();
+        player.draw();
+
+        // Update & Draw Items
+        for (let i = items.length - 1; i >= 0; i--) {
+            let item = items[i];
+            item.update();
+            item.draw();
+
+            // Collision Detection (Simple Circle/Box distance)
+            const dx = player.x - item.x;
+            const dy = player.y - item.y;
+            const distance = Math.sqrt(dx*dx + dy*dy);
+
+            if (distance < (player.size/2 + item.size/2)) {
+                
+                if (item.type === 'bad') {
+                    // Check if player is currently invulnerable
+                    if (Date.now() - lastHitTime > INVULNERABILITY_TIME) {
+                        // Take Damage
+                        lives--;
+                        updateLivesDisplay();
+                        items.splice(i, 1); 
+                        lastHitTime = Date.now();
+                        
+                        showDamageFeedback();
+
+                        if (lives <= 0) {
+                            gameOver();
+                            return;
+                        }
+                    }
+                    // If invulnerable, item passes through safely
+                } else {
+                    // Good item
+                    score += item.value;
+                    scoreDisplay.innerText = `Score: ${score}`;
+                    items.splice(i, 1); 
+                    
+                    if (score >= TARGET_SCORE) {
+                        gameWin();
+                        return;
+                    }
+                }
+            } else if (item.y > height + 50) {
+                // Off screen
+                items.splice(i, 1);
+            }
+        }
+
+        if (!isGameOver) {
+            gameLoopId = requestAnimationFrame(gameLoop);
+        }
+    }
+
+</script>
+</body>
+</html>
